@@ -1,3 +1,10 @@
+# ====================================================
+#         ** Developed by Hossein Sarshar **
+#
+# In this file, the model is trained using a simple 
+# Logistic Regression against the training data. Then
+# The model is saved in the Blob storage
+# ====================================================
 
 # Import statements
 from pyspark.conf import SparkConf
@@ -60,17 +67,6 @@ train_df.show(5)
 from pyspark.ml.classification import LogisticRegression
 lr = LogisticRegression(maxIter=100)
 lrModel = lr.fit(train_df)
-
-'''predictions = lrModel.transform(val_df)
-
-from pyspark.ml.evaluation import BinaryClassificationEvaluator
-evaluator = BinaryClassificationEvaluator(rawPredictionCol="rawPrediction")
-evaluator.evaluate(predictions)
-accuracy = predictions.filter(predictions.label == predictions.prediction).count() / float(val_set.count())
-print('Accuracy {}'.format(accuracy))
-
-pipeline.write.overwrite.save("sample-pipeline")
-'''
 
 schema = StructType([
     StructField("id", StringType(), True),

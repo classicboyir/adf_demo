@@ -1,10 +1,33 @@
+# ====================================================
+#         ** Developed by Hossein Sarshar **
+#
+# In this file, the training data is cleaned and 
+# stored in a Blob storage
+# ====================================================
+
+
 import pandas as pd  
 import numpy as np
 import re
 from bs4 import BeautifulSoup
 from nltk.tokenize import WordPunctTokenizer
+from pyspark.conf import SparkConf
+from pyspark.context import SparkContext 
+from pyspark.sql import SQLContext
+from pyspark.sql import Row
+from pyspark.sql.types import *
+from pyspark import StorageLevel
+from datetime import datetime
+from pyspark.sql.functions import udf
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+import itertools
+import sys
 
-def tweet_cleaner_updated(text):
+reload(sys)
+sys.setdefaultencoding('UTF8')
+
+def tweet_cleaner(text):
     tok = WordPunctTokenizer()
 
     pat1 = r'@[A-Za-z0-9_]+'
@@ -25,32 +48,19 @@ def tweet_cleaner_updated(text):
         bom_removed = souped.decode("utf-8-sig").replace(u"\ufffd", "?")
     except:
         bom_removed = souped
+
     stripped = re.sub(combined_pat, '', bom_removed)
     stripped = re.sub(www_pat, '', stripped)
     lower_case = stripped.lower()
     neg_handled = neg_pattern.sub(lambda x: negations_dic[x.group()], lower_case)
     letters_only = re.sub("[^a-zA-Z]", " ", neg_handled)
+
     # During the letters_only process two lines above, it has created unnecessay white spaces,
     # I will tokenize and join together to remove unneccessary white spaces
     words = [x for x  in tok.tokenize(letters_only) if len(x) > 1]
     return (" ".join(words)).strip()
 
-# Import statements
-from pyspark.conf import SparkConf
-from pyspark.context import SparkContext 
-from pyspark.sql import SQLContext
-from pyspark.sql import Row
-from pyspark.sql.types import *
-from pyspark import StorageLevel
-from datetime import datetime
-from pyspark.sql.functions import udf
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import *
-import itertools
-import sys
-
-reload(sys)
-sys.setdefaultencoding('UTF8')
+input_file_address = 'wasb://tweets@mohdemo.blob.core.windows.net/trainingdata/training.csv'
 
 spark = SparkSession.builder \
      .appName("Clean Training Tweets")\
@@ -66,13 +76,8 @@ schema = StructType([
     StructField("tweet", StringType(), True)
 ])
 
-df0 = spark.read.format("csv").option("header", "false").schema(schema).load('wasb://tweets@mohdemo.blob.core.windows.net/trainingdata/training.csv')
-# df0 = spark.read.csv('wasb://tweets@mohdemo.blob.core.windows.net/trainingdata/training.csv', header = False, inferSchema = True)
+df0 = spark.read.format("csv").option("header", "false").schema(schema).load(input_file_address)
 df0.cache()
-print(df0.count())
-df0.show()
-# print('At here: df0.toPandas()')
-# df = df0.toPandas()
 
 def sentiment_restruct(sentiment):
     if sentiment == 0:
@@ -83,7 +88,7 @@ def sentiment_restruct(sentiment):
         return sentiment
 
 sentiment_restruct_udf = udf(sentiment_restruct, IntegerType())
-tweet_cleaner_updated_udf = udf(tweet_cleaner_updated, StringType())
+tweet_cleaner_updated_udf = udf(tweet_cleaner, StringType())
 actualdf = df0.sample(False, 0.5, seed=0)
 df_cleaned = actualdf.withColumn('cleaned_tweets', tweet_cleaner_updated_udf(df0['tweet']))
 df_cleaned = df_cleaned.withColumn('cleaned_sentiment', sentiment_restruct_udf(df0['sentiment']))
@@ -101,4 +106,5 @@ schema = StructType([
     StructField("cleaned_sentiment", IntegerType(), True)
 ])
 
-df_cleaned.write.csv('wasb://tweets@mohdemo.blob.core.windows.net/cleanedtweets/trainingdata/', header = True, mode = 'overwrite')
+out_file_address = 'wasb://tweets@mohdemo.blob.core.windows.net/cleanedtweets/trainingdata/'
+df_cleaned.write.csv(out_file_address, header = True, mode = 'overwrite')
